@@ -1,0 +1,272 @@
+#Task 6.4.2: Setting up an AB test with R
+
+The scenario is that you own a chain of gyms in Melbourne which caters to a wide clientele and you wish to increase the percentage of customers paying to renew their memberships for another 6 months.
+
+Gym attendance is notorious for customers being frequent visitors in the first month (or week) and then rapidly dropping off and not renewing their memberships. Across all gyms the mean percentage of customers who renew their memberships for an additional 6 months is 7.4%, although there is a standard deviation of 2% in retention between gyms.
+
+To encourage more customers to renew for 6 months you have decided to offer a free one-month membership extension to as many customers as possible. 
+
+How can you setup a control group to check that this intervention did in fact increase the chance of customers going on to pay for a 6-month renewal?
+
+Given that you think this campaign will increase renewals by about 1% you want to offer the one-month extension to as many customers as possible. How can you achieve this while still having a statistically significant control group?
+
+The data we will use for this case consists of records for 1000 customers with their gender, age, number of days they have been a member, days since their last visit and results of a survey they initially filled in on membership regarding their reasons for joining the gym.
+
+In this task we will focus on how to divide each independent variable such that resulting groups (A and B) best match the business requirements. How the A/B groups are implemented and how to do the analysis is covered in the next task.
+
+
+
+```{r Libraries}
+library(ggplot2)
+library(dplyr)
+```
+
+##Load the data
+
+The location will change depending on where you run this script.
+
+```{r load_data}
+
+data_file_name <- "gym_customers.csv"
+customers_df = read.table(data_file_name, sep=",", header = TRUE, stringsAsFactors=FALSE)
+
+```
+
+##Minimum sample size
+
+In the case study we are told that the standard deviation is 2\% and the expected effect size is 1\%.
+
+Taking a 95\% confidence level we can use the minimum sample size as
+$$
+n_{ss} = z_{alpha}^2 \left( \frac{ \sigma }{E} \right)^2
+$$
+where $z_{alpha} = 1.96$ for a 95\% confidence level.
+
+
+```{r n_ss}
+z_alpha <- 1.96
+effect_est <- 0.01
+sd_est <- 0.02
+n_ss <- ceiling((z_alpha * sd_est / effect_est)^2)
+print(paste('Min sample size', n_ss))
+
+```
+
+So the smallest group that we can expect to be able to get statistically significant results from in the analysis of this A/B test has at least 16 members.
+
+
+##Examine the data
+
+First, best to look at the data itself. Ensure it is clean, look at the columns etc.
+
+```{r examine_1}
+
+View(customers_df)
+```
+
+Second, lets look at some relationships. Intuitively more frequent gym users should have their days since last visit << days since they became a member.
+
+```{r examine_2}
+
+qplot(customers_df$days_member, customers_df$days_last_visit)
+```
+
+It's quite a continuous distribution, with some customers who disappeared after their first day!
+
+
+```{r examine_3}
+qplot(customers_df$days_last_visit/customers_df$days_member)
+```
+
+There is a trend in older people not being as frequent users as younger people.
+
+```{r examine_4}
+qplot(customers_df$age, customers_df$days_last_visit/customers_df$days_member)
+```
+
+How does gender factor into this?
+
+```{r examine_5}
+qplot(customers_df$age, customers_df$days_last_visit/customers_df$days_member, 
+      colour=customers_df$gender)
+```
+
+Nothing obvious here...
+
+What is happening with gender?
+
+```{r examine_6}
+qplot(customers_df$gender)
+
+```
+
+What about age?
+
+```{r examine_7}
+qplot(customers_df$age)
+
+```
+
+##Splitting into groups
+
+Age would be a logical divider in terms of demographic groups of interest in later analysis.
+Different marketing strategies would be needed based on age and gender. So lets investigate how to divide these up keeping in mind out minimum sample size.
+
+```{r split_age}
+gg <- ggplot(customers_df, aes(x=age, fill=gender))
+gg <- gg + geom_histogram(alpha=0.5, position="identity", binwidth=1)
+gg
+```
+
+Let's see how many groups we could divide the ages into for male and females for a given percentage set aside for the control group.
+
+```{r sorted_data}
+cond <- customers_df$gender == 'M'
+sorted_M <- customers_df[cond,] %>% arrange(age)
+sorted_M$number <- 1
+sorted_M$cumsum <- cumsum(sorted_M$number)
+sorted_M$cumsum
+
+cond <- customers_df$gender == 'F'
+sorted_F <- customers_df[cond,] %>% arrange(age)
+sorted_F$number <- 1
+sorted_F$cumsum <- cumsum(sorted_F$number)
+sorted_F$cumsum
+
+```
+
+
+Have a look at the effect of changing the percentage that is set aside for the control group.
+
+Smaller percentages increase the size of the treatment group, but decrease the potential number of groups to investigate later.
+
+As an example a 10\% allocation to the control group is shown below.
+
+```{r plot_cumsum}
+# set control group percentage
+percentage_cg <- 0.1
+
+# number required in each group
+del_n <- n_ss / percentage_cg
+
+# plot break points 
+gg <- ggplot()
+gg <- gg + geom_line(aes(x=sorted_M$age, y=sorted_M$cumsum),
+                     colour='dark blue')
+gg <- gg + geom_line(aes(x=sorted_F$age, y=sorted_F$cumsum),
+                     colour='dark red')
+gg <- gg + geom_hline(yintercept=seq(del_n, 543, del_n))
+gg
+
+# smallest number is with females
+n_groups_f <- floor(max(sorted_F$cumsum)/del_n)
+print(paste('Number of groups for females:', n_groups_f))
+```
+
+
+##Can the data be clustered?
+
+Sometimes there are clear patterns in the data if it is visualized in particular ways. Let's examine the effect of behaviour via the survey score.
+
+```{r survey_score}
+int_breaks_rounded <- function(x, n = 10) pretty(x, n)[round(pretty(x, n),1) %% 1 == 0]
+
+gg <- ggplot()
+gg <- gg + geom_point(aes(x=customers_df$age,
+                          y=customers_df$survey_score))
+gg <- gg + scale_y_continuous(breaks= int_breaks_rounded )
+gg <- gg + labs(x='Age (years)', y='Survey score')
+gg
+```
+
+There are two fairly clear clusters in the behaviour metric (survey score) and the age.
+
+```{r survey_score_groups}
+
+gg <- ggplot()
+age_cut<-40
+gg <- gg + geom_point(aes(x=customers_df$age,
+                          y=customers_df$survey_score))
+gg <- gg + scale_y_continuous(breaks= int_breaks_rounded )
+gg <- gg + labs(x='Age (years)', y='Survey score')
+gg <- gg + geom_abline(intercept = 0, slope = 5/age_cut,colour='red')
+gg
+
+```
+
+A clear split in this data is to divide the survey score by 4.5. The gender is another clear split, but what about the age?
+
+Intuitively a midway age split for the cluster above the line is about 29, while for the lower cluster it is about 50. We can investigate the numbers for this more carefully.
+
+```{r survey_split}
+age_cut_above <- 29
+age_cut_below <- 50
+
+# group above/below the line
+customers_df$above <- customers_df$survey_score > 4.5
+
+# create young/old groups with different splits depending on the above/below group
+
+customers_df$young <- case_when(
+  customers_df$above ~ customers_df$age <= age_cut_above,
+  TRUE ~ customers_df$age <= age_cut_below
+)
+
+summary_df <- customers_df %>% select(above, young) %>%
+  group_by(above, young) %>% mutate(n=n()) %>% distinct()
+summary_df
+
+# required percentage to be set aside for the control group
+summary_df$pc_needed <- n_ss / summary_df$n 
+summary_df$pc_needed
+
+# max required percentage
+pc_needed <- max(summary_df$pc_needed)
+print(paste('pc_needed:', pc_needed))
+
+```
+
+Require at least 9\% to be set as the control group.
+
+
+##Randomly allocate the groups
+
+Randomly set 10\% of all customers to the control group.
+
+```{r setGroups}
+pc_needed <- 0.1
+n <- length(customers_df$gender)
+
+customers_df$group <- case_when(
+  runif(n) < pc_needed ~ 'A',
+  TRUE ~ 'B'
+)
+```
+
+The 1 month free extension will then be offered to customers marked with group = 'B'
+
+
+##What if there were two different types of treatments?
+
+Imagine that the cluster above the line is more interested in muscle tone than moderate health. Thus they would need different marketing materials
+
+
+Randomly set 10\% of all customers to the control group and ensure B and C are split according to B above the line.
+
+```{r set3Groups}
+pc_needed <- 0.1
+n <- length(customers_df$gender)
+
+customers_df$group_abc <- case_when(
+  runif(n) < pc_needed ~ 'A',
+  customers_df$above ~ 'B',
+  TRUE ~ 'C'
+)
+
+print(paste('n_A =', sum(customers_df$group_abc=='A') ))
+print(paste('n_B =', sum(customers_df$group_abc=='B') ))
+print(paste('n_C =', sum(customers_df$group_abc=='C') ))
+```
+
+
+

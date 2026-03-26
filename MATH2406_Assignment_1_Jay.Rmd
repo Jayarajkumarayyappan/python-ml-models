@@ -1,0 +1,296 @@
+---
+title: "MATH2406 TP4, 2020"
+author: "Jayarajkumar Ayyappan and S3837952"
+subtitle: Assignment 1 Applied analytics
+output: 
+  html_notebook: default
+---
+
+## Setup
+
+Install and load the necessary packages to reproduce the report here:
+
+```{r, echo = TRUE, warnings = FALSE}
+
+# Already installed the below required packages in my Rstudio as part data wrangling course.
+#install.packages("dplR")
+#install.packages("magrittr")
+#install.packages("readr")
+#install.packages("xlsx")
+#install.packages("tidyr")
+#install.packages("lubridate")
+#install.packages("Hmisc")
+#install.packages("ggplot2")
+#install.packages("MVN")
+#install.packages("MASS")
+#install.packages("infotheo")
+#install.packages("outliers")
+#install.packages("mlr")
+#install.packages("knitr")
+#install.packages("ggplot2")
+```
+
+# question 1 download the given file"pop_dataset_0002.txt" and moved to to workspace ,otherwise we need to give the complete path.
+
+```{r}
+library(readr)
+df1 <- read_csv("pop_dataset_0002.txt")
+View(df1)
+```
+
+```{r}
+dim(df1)
+str(df1)
+names(df1)
+ head(unique(df1$region))
+
+```
+
+```{r}
+colSums(is.na(df1))
+mean(df1$age)
+min(df1$age)
+max(df1$age)
+sd(df1$age)
+
+```
+```{r}
+q2Age <- rep (df1$age , df1$population)
+q2Age
+print(mean(q2Age))
+print(sd(q2Age))
+```
+
+
+```{r}
+# 3 Record the following statistics on the means from each region:
+library(dplyr)
+df2 <- df1 %>% group_by(region) %>% summarise(Min = min(age,na.rm = TRUE),
+Q1 = quantile(age,probs = .25,na.rm = TRUE),
+Median = median(age, na.rm = TRUE),
+Q3 = quantile(age,probs = .75,na.rm = TRUE),
+Max = max(age,na.rm = TRUE),
+Mean = mean(age, na.rm = TRUE),
+SD = sd(age, na.rm = TRUE),
+n = n())
+df2
+```
+
+```{r}
+dq3 <- data.frame('region'= rep((df1$region), df1$population),
+                                           'age'= rep((df1$age), df1$population))
+dq3
+#data frame for means for each region 
+rage_mean <- dq3 %>% group_by(region) %>% summarize(Mean = mean(age))
+rage_mean
+print(summarise(rage_mean, mean = mean(Mean)))
+print(summarise(rage_mean, sd = sd(Mean)))
+print(summarise(rage_mean, Min = min(Mean)))
+print(summarise(rage_mean, Q1 = quantile(Mean,0.25)))
+print(summarise(rage_mean, Q2 = quantile(Mean,0.5)))
+print(summarise(rage_mean, Q3 = quantile(Mean,0.75)))
+print(summarise(rage_mean, Max = max(Mean)))
+qplot(rage_mean$Mean,
+      geom="histogram",
+      binwidth = 4,  
+      main = "Histogram for Mean age", 
+      xlab = "Age",  
+      fill=I("white"), 
+      col=I("violet"), 
+      alpha=I(.5))
+```
+
+```{r}
+df3 <- df1 %>% group_by(region) %>% summarise(Min = min(population),
+Q1 = quantile(population,probs = .25),
+Median = median(population),
+Q3 = quantile(population,probs = .75),
+Max = max(population),
+Mean = mean(population),
+SD = sd(population),
+SUM = sum(population),
+n = n())
+df3
+
+```
+
+```{r}
+#4.1 Show which region has the least people and how many it has.
+#4.2 Plot the distribution of ages for the region with the least people.
+df4 <- arrange(df3,(SUM))
+df4
+df4 %>% filter(SUM == 3)
+least_population_cities <- df3 %>% filter(SUM == 3)
+joined_table <- left_join(least_population_cities, df1, 
+                           by = c("region" = "region"))
+age_dataset<- data.frame('Age'=rep((joined_table$age), joined_table$population))
+# Histogram of the ages
+qplot(age_dataset$Age,
+      geom="histogram",
+      binwidth = 5,  
+      main = "Histogram for age of regions with the least people", 
+      xlab = "Age",  
+      fill=I("violet"), 
+      col=I("black"), 
+      alpha=I(.5))
+```
+```{r}
+#Consider the region with the largest population:
+library(ggplot2)
+df5 <- arrange(df3,desc(SUM))
+df5
+q5 <- df1 %>% filter(region =="SSC22015")
+q5
+ggplot(q5, aes(population)) + stat_ecdf(geom = "step")
+ggplot(q5, aes(x = population)) +
+  stat_ecdf(aes(color = gender,linetype = gender), 
+              geom = "step", size = 1.5) +
+  scale_color_manual(values = c("#00AFBB", "#E7B800"))+
+  labs(y = "f(population)")
+```
+Provide an analysis of trends in age against region population:
+6.1 Plot the ratio of old to young people using 40 years old as a cut off, i.e. young is defined as age < 40 and old as >= 40.
+6.2 Comment on any trends you see in the data. What could cause such trends?
+
+```{r}
+
+dfq6<-data.frame('region'=rep((df1$region), df1$population),
+                                           'age'=rep((df1$age), df1$population))
+dfq6
+
+yp <-dfq6 %>% filter (age <= 40) 
+yp
+yplr<- yp %>% group_by(region)%>% count(region)
+yplr
+op <-dfq6 %>% filter (age > 40)
+op
+oplr <- op %>% group_by(region)%>% count(region)
+oplr
+Totalcount <-left_join (yplr, oplr, by = c("region" = "region"))
+# we could see old people and young people count for each region side by side 
+Totalcount
+Totalcount$ratio <-Totalcount$n.y/Totalcount$n.x
+Totalcount
+Addageratio <-left_join(df3, Totalcount, by = c("region" = "region"))
+Addageratio<- na.omit(Addageratio)
+Addageratio
+ggplot(Addageratio, aes(x = SUM, y = ratio)) +geom_point() +labs(
+    title = "Plot of old to young people ratio against population",
+    x = "Population",
+    y = "Old to young people ratio")
+
+```
+# when the population increases old age to young age ratio decrease it indicates that, Young crowds are mostly in the city,where the population is more. I think opportunities are more in the cities and young people are migrating towards city or want to live in big cities.
+
+# Provide an analysis of trends in gender ratio against region population:
+```{r}
+# prepare data for gender calculation
+dq7<-data.frame('region'=rep((df1$region), df1$population),
+                        'gender'=rep((df1$gender), df1$population))
+dq7
+males<-dq7 %>%filter(gender=='M')
+males
+females<-dq7 %>%filter(gender=='F')
+females
+mcountbyreg<-males %>%group_by(region)%>%count(region)
+mcountbyreg
+fcountbyreg<-females %>%group_by(region)%>%count(region)
+fcountbyreg
+totalgendcount <-left_join(mcountbyreg, fcountbyreg, by = c("region" = "region"))
+totalgendcount<- na.omit(totalgendcount)
+totalgendcount
+totalgendcount$ratio<-totalgendcount$n.x/totalgendcount$n.y
+genderratio <-left_join(df3,totalgendcount, by = c("region" = "region"))
+genderratio<- na.omit(genderratio)
+genderratio
+ggplot(genderratio, aes(x = SUM, y = ratio)) +
+  geom_point() +labs(
+    title = "Plot of gender ratio (male to female) against region population",
+    x = "Population",
+    y = "Male to Female ratio")
+
+```
+# Male to femaie ratio is equal to 1 accross population and we can see interm young babies more number of males compare to females. So in the small towns or suburbs male population will be slightly higher.
+
+```{r}
+#population by gender
+df8 <- df1 %>% group_by(gender) %>% summarise(Min = min(population),
+SUM = sum(population),
+n = n())
+df8
+df8byage <-df1 %>% group_by(age) %>% summarise(SUM =sum(population))
+df8adesc<- arrange(df8byage,desc(SUM))
+head(df8adesc)
+# we will go with female gender and age group of 28 to 31 for our products as female population and togal population is more. 
+print(head(fcountbyreg %>% arrange(desc(n))))
+agefilter <- df1 %>% filter(28<= age & age <= 31 )
+TPby_region_age<-agefilter %>% group_by(region, age) %>% summarize(SUM = sum(population))
+df8b <- arrange(TPby_region_age,desc(SUM))
+head(df8b)
+```
+
+```{r}
+# based on the above we have selected region ssc22015
+age<- df1 %>% filter(region=='SSC22015')
+data_for_age<-data.frame('Region'=rep((age$region), age$population),'Age'=rep((age$age), age$population))
+n<-1
+xbar<-rep(NA,n)
+
+for (i in 1: n){
+  
+  mysample<-sample(data_for_age$Age, size = 100)
+  xbar[i]<-mean(mysample)
+}
+
+mean(xbar)
+# 9.2 Add another sample of 100 ages drawn from the same sample.
+n<-2
+ybar<-rep(NA,n)
+for (i in 1: n){
+  mysample<-sample(data_for_age$Age, size = 100)
+  ybar[i]<-mean(mysample)
+}
+mean(ybar)
+
+sd(ybar)
+hist(ybar)
+lines(density(ybar), col="violet", lwd=2)
+#Repeat this process for N = 1 (the original sample), 10, 100 and 1000 samples.
+n<-10
+zbar<-rep(NA,n)
+for (i in 1: n){
+  
+  mysample<-sample(data_for_age$Age, size = 100)
+  zbar[i]<-mean(mysample)
+}
+mean(zbar)
+sd(zbar)
+hist(zbar)
+lines(density(zbar), col="violet", lwd=2)
+
+n<-100
+z1bar<-rep(NA,n)
+for (i in 1: n){
+  
+  mysample<-sample(data_for_age$Age, size = 100)
+  z1bar[i]<-mean(mysample)
+}
+mean(z1bar)
+sd(z1bar)
+hist(z1bar)
+lines(density(z1bar), col="violet", lwd=2)
+
+n<-1000
+z2bar<-rep(NA,n)
+for (i in 1: n){
+  
+  mysample<-sample(data_for_age$Age, size = 100)
+  z2bar[i]<-mean(mysample)
+}
+mean(z2bar)
+sd(z2bar)
+hist(z2bar)
+lines(density(z2bar), col="violet", lwd=2)
+```
+<br>
+<br>
